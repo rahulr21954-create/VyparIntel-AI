@@ -1,0 +1,88 @@
+# ==========================================
+# VyparIntel Root Git Ignore
+# ==========================================
+
+# Dependencies
+node_modules/
+
+# Environment variables / secrets
+.env
+.env.*
+!.env.example
+
+# Backend environment
+backend/.env
+backend/.env.*
+!backend/.env.example
+
+# Frontend environment
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Build outputs
+dist/
+build/
+
+backend/dist/
+backend/build/
+
+frontend/dist/
+frontend/build/
+
+# Vite
+frontend/.vite/
+.vite/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+backend/logs/
+frontend/logs/
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Cache / temporary files
+.cache/
+.tmp/
+tmp/
+temp/
+
+backend/.cache/
+frontend/.cache/
+
+# Runtime files
+*.pid
+*.pid.lock
+*.seed
+
+# Local databases / dumps
+*.db
+*.sqlite
+*.sqlite3
+dump/
+backups/
+
+# OS generated files
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# IDE / editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Debug / local files
+*.local
+
+# Nodemon
+backend/.nodemon.json
+.nodemon.json
