@@ -111,7 +111,7 @@ const Signup = () => {
             }
 
             // New account → Create Business
-            navigate("/business-setup", {
+            navigate("/login", {
                 replace: true,
             });
 
