@@ -1,437 +1,228 @@
-import Sale from "../models/Sale.js";
-import Expense from "../models/Expense.js";
-import Product from "../models/Product.js";
-
+import buildBusinessContext from "../services/businessContextService.js";
 import generateMorningBrief from "../services/morningBriefService.js";
+
+
+// ========================================
+// GET MORNING BRIEF
+// ========================================
 
 const getMorningBrief = async (req, res) => {
     try {
-        const businessId = req.user.business;
+        // ========================================
+        // BUSINESS ID
+        // ========================================
+
+        const businessId = req.user?.business;
 
         if (!businessId) {
             return res.status(400).json({
                 success: false,
-                message: "Business not found",
+                message: "Business not found.",
             });
         }
 
+
         // ========================================
-        // DATE RANGES
+        // BUILD BUSINESS CONTEXT
         // ========================================
 
-        const now = new Date();
-
-        const currentStart = new Date(now);
-        currentStart.setDate(
-            currentStart.getDate() - 30
+        console.log(
+            "🧠 Building Morning Brief business context..."
         );
 
-        const previousStart = new Date(now);
-        previousStart.setDate(
-            previousStart.getDate() - 60
-        );
-
-        const previousEnd = new Date(now);
-        previousEnd.setDate(
-            previousEnd.getDate() - 30
-        );
+        const businessContext =
+            await buildBusinessContext(req.user._id);
 
 
-        // ========================================
-        // FETCH DATA
-        // ========================================
-
-        const currentSales = await Sale.find({
-            business: businessId,
-            saleDate: {
-                $gte: currentStart,
-                $lte: now,
-            },
-        });
-
-        const previousSales = await Sale.find({
-            business: businessId,
-            saleDate: {
-                $gte: previousStart,
-                $lt: previousEnd,
-            },
-        });
-
-        const currentExpenses = await Expense.find({
-            business: businessId,
-            expenseDate: {
-                $gte: currentStart,
-                $lte: now,
-            },
-        });
-
-        const previousExpenses = await Expense.find({
-            business: businessId,
-            expenseDate: {
-                $gte: previousStart,
-                $lt: previousEnd,
-            },
-        });
-
-        const products = await Product.find({
-            business: businessId,
-        });
-
-
-        // ========================================
-        // REVENUE
-        // ========================================
-
-        const currentRevenue = currentSales.reduce(
-            (sum, sale) =>
-                sum + Number(sale.totalAmount || 0),
-            0
-        );
-
-        const previousRevenue = previousSales.reduce(
-            (sum, sale) =>
-                sum + Number(sale.totalAmount || 0),
-            0
-        );
-
-        let revenueChangePercent = null;
-
-        if (previousRevenue > 0) {
-            revenueChangePercent = Number(
-                (
-                    ((currentRevenue -
-                        previousRevenue) /
-                        previousRevenue) *
-                    100
-                ).toFixed(2)
-            );
-        }
-
-
-        // ========================================
-        // EXPENSES
-        // ========================================
-
-        const currentExpenseTotal =
-            currentExpenses.reduce(
-                (sum, expense) =>
-                    sum + Number(expense.amount || 0),
-                0
-            );
-
-        const previousExpenseTotal =
-            previousExpenses.reduce(
-                (sum, expense) =>
-                    sum + Number(expense.amount || 0),
-                0
-            );
-
-        let expenseChangePercent = null;
-
-        if (previousExpenseTotal > 0) {
-            expenseChangePercent = Number(
-                (
-                    ((currentExpenseTotal -
-                        previousExpenseTotal) /
-                        previousExpenseTotal) *
-                    100
-                ).toFixed(2)
-            );
-        }
-
-
-        // ========================================
-        // PROFIT
-        // ========================================
-
-        const grossProfit = currentSales.reduce(
-            (sum, sale) =>
-                sum + Number(sale.profit || 0),
-            0
-        );
-
-        const netProfit =
-            grossProfit -
-            currentExpenseTotal;
-
-
-        // ========================================
-        // INVENTORY
-        // ========================================
-
-        const lowStockProducts =
-            products.filter(
-                (product) =>
-                    product.stock <=
-                    product.minimumStock
-            );
-
-        const outOfStockProducts =
-            products.filter(
-                (product) =>
-                    product.stock === 0
-            );
-
-
-        // ========================================
-        // BUSINESS SIGNALS
-        // ========================================
-
-        const risks = [];
-
-
-        // Revenue decline
-        if (
-            revenueChangePercent !== null &&
-            revenueChangePercent <= -10
-        ) {
-            risks.push({
-                type: "DECLINING_SALES",
-
-                severity:
-                    revenueChangePercent <= -25
-                        ? "HIGH"
-                        : "MEDIUM",
-
-                value:
-                    revenueChangePercent,
-
+        if (!businessContext) {
+            return res.status(404).json({
+                success: false,
                 message:
-                    "Revenue has declined compared with the previous period.",
+                    "Unable to build business context.",
             });
         }
 
 
-        // Negative profit
-        if (netProfit < 0) {
-            risks.push({
-                type: "NEGATIVE_PROFIT",
-
-                severity: "HIGH",
-
-                value: netProfit,
-
-                message:
-                    "Current net profit is negative.",
-            });
-        }
-
-
-        // Low stock
-        if (lowStockProducts.length > 0) {
-            risks.push({
-                type: "LOW_STOCK",
-
-                severity:
-                    lowStockProducts.length >= 5
-                        ? "HIGH"
-                        : "MEDIUM",
-
-                value:
-                    lowStockProducts.length,
-
-                message:
-                    `${lowStockProducts.length} products are at or below minimum stock.`,
-            });
-        }
-
-
-        // Out of stock
-        if (outOfStockProducts.length > 0) {
-            risks.push({
-                type: "OUT_OF_STOCK",
-
-                severity: "HIGH",
-
-                value:
-                    outOfStockProducts.length,
-
-                message:
-                    `${outOfStockProducts.length} products are out of stock.`,
-            });
-        }
-
-
-        // Rising expenses
-        if (
-            expenseChangePercent !== null &&
-            expenseChangePercent >= 20
-        ) {
-            risks.push({
-                type: "RISING_EXPENSES",
-
-                severity:
-                    expenseChangePercent >= 40
-                        ? "HIGH"
-                        : "MEDIUM",
-
-                value:
-                    expenseChangePercent,
-
-                message:
-                    "Expenses have increased significantly compared with the previous period.",
-            });
-        }
+        console.log(
+            "✅ Morning Brief business context ready."
+        );
 
 
         // ========================================
-        // STRUCTURED BUSINESS DATA FOR AI
+        // DEBUG BUSINESS DATA
         // ========================================
 
-        const businessData = {
-            period: {
-                current: "Last 30 days",
-                previous: "Previous 30 days",
-            },
+        console.log(
+            "📊 Morning Brief Financials:",
+            businessContext.financials
+        );
 
-            sales: {
-                currentRevenue,
-                previousRevenue,
-                revenueChangePercent,
-                totalSales:
-                    currentSales.length,
+        console.log(
+            "📦 Morning Brief Inventory:",
+            businessContext.inventory
+        );
 
-                previousTotalSales:
-                    previousSales.length,
-            },
-
-            expenses: {
-                currentExpenseTotal,
-                previousExpenseTotal,
-                expenseChangePercent,
-            },
-
-            profitability: {
-                grossProfit,
-                currentExpenses:
-                    currentExpenseTotal,
-                netProfit,
-            },
-
-            inventory: {
-                totalProducts:
-                    products.length,
-
-                lowStockCount:
-                    lowStockProducts.length,
-
-                outOfStockCount:
-                    outOfStockProducts.length,
-
-                lowStockProducts:
-                    lowStockProducts.map(
-                        (product) => ({
-                            name:
-                                product.name,
-
-                            stock:
-                                product.stock,
-
-                            minimumStock:
-                                product.minimumStock,
-                        })
-                    ),
-
-                outOfStockProducts:
-                    outOfStockProducts.map(
-                        (product) => ({
-                            name:
-                                product.name,
-
-                            stock:
-                                product.stock,
-                        })
-                    ),
-            },
-
-            risks,
-        };
+        console.log(
+            "🛒 Morning Brief Sales:",
+            businessContext.sales
+        );
 
 
         // ========================================
-        // STRUCTURED DATA FOR FRONTEND
-        // ========================================
-
-        const briefData = {
-
-            period: {
-                current:
-                    "Last 30 days",
-
-                previous:
-                    "Previous 30 days",
-            },
-
-
-            revenue: {
-                current:
-                    currentRevenue,
-
-                previous:
-                    previousRevenue,
-
-                changePercent:
-                    revenueChangePercent,
-            },
-
-
-            expenses: {
-                current:
-                    currentExpenseTotal,
-
-                previous:
-                    previousExpenseTotal,
-
-                changePercent:
-                    expenseChangePercent,
-            },
-
-
-            profit: {
-                grossProfit,
-
-                netProfit,
-            },
-
-
-            inventory: {
-                totalProducts:
-                    products.length,
-
-                lowStockCount:
-                    lowStockProducts.length,
-
-                outOfStockCount:
-                    outOfStockProducts.length,
-            },
-
-
-            signals: risks.map(
-                (risk) => ({
-                    type:
-                        risk.type,
-
-                    severity:
-                        risk.severity,
-
-                    value:
-                        risk.value,
-
-                    message:
-                        risk.message,
-                })
-            ),
-        };
-
-
-        // ========================================
-        // AI MORNING BRIEF
+        // GENERATE MORNING BRIEF
         // ========================================
 
         const morningBrief =
             await generateMorningBrief(
-                businessData
+                businessContext
             );
+
+
+        // ========================================
+        // DIRECT BUSINESS SNAPSHOT
+        // ========================================
+
+        const financials =
+            businessContext.financials || {};
+
+        const revenue =
+            financials.revenue || {};
+
+        const expenses =
+            financials.expenses || {};
+
+        const grossProfit =
+            financials.grossProfit || {};
+
+        const profit =
+            financials.profit || {};
+
+        const sales =
+            businessContext.sales || {};
+
+        const inventory =
+            businessContext.inventory || {};
+
+
+        // ========================================
+        // SNAPSHOT
+        // ========================================
+
+        const businessSnapshot = {
+
+            revenue: {
+                current:
+                    Number(
+                        revenue.current || 0
+                    ),
+
+                previous:
+                    Number(
+                        revenue.previous || 0
+                    ),
+
+                changePercent:
+                    revenue.changePercent ??
+                    null,
+            },
+
+
+            expenses: {
+                current:
+                    Number(
+                        expenses.current || 0
+                    ),
+
+                previous:
+                    Number(
+                        expenses.previous || 0
+                    ),
+
+                changePercent:
+                    expenses.changePercent ??
+                    null,
+            },
+
+
+            grossProfit: {
+                current:
+                    Number(
+                        grossProfit.current || 0
+                    ),
+
+                previous:
+                    Number(
+                        grossProfit.previous || 0
+                    ),
+
+                changePercent:
+                    grossProfit.changePercent ??
+                    null,
+            },
+
+
+            netProfit: {
+                current:
+                    Number(
+                        profit.current || 0
+                    ),
+
+                previous:
+                    Number(
+                        profit.previous || 0
+                    ),
+
+                changePercent:
+                    profit.changePercent ??
+                    null,
+
+                status:
+                    profit.status ||
+                    businessContext.businessStatus ||
+                    "BREAK_EVEN",
+            },
+
+
+            sales: {
+                current:
+                    Number(
+                        sales.currentPeriod || 0
+                    ),
+
+                previous:
+                    Number(
+                        sales.previousPeriod || 0
+                    ),
+
+                changePercent:
+                    sales.changePercent ??
+                    null,
+            },
+
+
+            inventory: {
+                totalProducts:
+                    Number(
+                        inventory.totalProducts || 0
+                    ),
+
+                lowStockCount:
+                    Number(
+                        inventory.lowStockCount || 0
+                    ),
+
+                outOfStockCount:
+                    Number(
+                        inventory.outOfStockCount || 0
+                    ),
+            },
+        };
+
+
+        console.log(
+            "📈 Morning Brief Snapshot:",
+            businessSnapshot
+        );
 
 
         // ========================================
@@ -443,24 +234,131 @@ const getMorningBrief = async (req, res) => {
             success: true,
 
             generatedAt:
+                morningBrief?.generatedAt ||
                 new Date(),
 
-            briefData,
 
-            businessData,
+            // ========================================
+            // BUSINESS
+            // ========================================
 
-            vyparMind: {
+            business: {
+                id:
+                    businessContext?.business?.id,
 
-                morningBrief,
+                name:
+                    businessContext?.business?.name ||
+                    "Your Business",
 
+                category:
+                    businessContext?.business?.category ||
+                    "",
+
+                currency:
+                    businessContext?.business?.currency ||
+                    "INR",
+            },
+
+
+            // ========================================
+            // PERIOD
+            // ========================================
+
+            period:
+                businessContext.period || {},
+
+
+            // ========================================
+            // SNAPSHOT
+            // ========================================
+
+            businessSnapshot,
+
+
+            // ========================================
+            // MORNING BRIEF
+            // ========================================
+
+            morningBrief: {
+
+                summary:
+                    morningBrief?.summary ||
+                    "",
+
+                whatHappened:
+                    morningBrief?.whatHappened ||
+                    "",
+
+                whatNeedsAttention:
+                    morningBrief?.whatNeedsAttention ||
+                    "",
+
+                todayFocus:
+                    morningBrief?.todayFocus ||
+                    "",
+
+                source:
+                    morningBrief?.source ||
+                    "BUSINESS_DATABASE",
+
+                aiAvailable:
+                    morningBrief?.aiAvailable ??
+                    false,
+
+                rateLimited:
+                    morningBrief?.rateLimited ??
+                    false,
+
+                generatedBy:
+                    morningBrief?.generatedBy ||
+                    "VyparIntel Deterministic Intelligence",
+
+                generatedAt:
+                    morningBrief?.generatedAt ||
+                    new Date(),
+            },
+
+
+            // ========================================
+            // RAW INTELLIGENCE
+            // ========================================
+
+            intelligence: {
+
+                financials:
+                    businessContext.financials ||
+                    {},
+
+                sales:
+                    businessContext.sales ||
+                    {},
+
+                inventory:
+                    businessContext.inventory ||
+                    {},
+
+                products:
+                    businessContext.products ||
+                    {},
+
+                expenses:
+                    businessContext.expenses ||
+                    {},
+
+                signals:
+                    businessContext.signals ||
+                    [],
+
+                businessStatus:
+                    businessContext.businessStatus ||
+                    "BREAK_EVEN",
             },
         });
-
 
     } catch (error) {
 
         console.error(
-            "Morning Brief Controller Error:",
+            "❌ Morning Brief Controller Error:",
             error
         );
 
@@ -469,8 +367,12 @@ const getMorningBrief = async (req, res) => {
             success: false,
 
             message:
-                "Failed to generate morning brief",
+                "Failed to generate Morning Brief.",
 
+            error:
+                process.env.NODE_ENV === "development"
+                    ? error.message
+                    : undefined,
         });
     }
 };
@@ -479,3 +381,4 @@ const getMorningBrief = async (req, res) => {
 export {
     getMorningBrief,
 };
+

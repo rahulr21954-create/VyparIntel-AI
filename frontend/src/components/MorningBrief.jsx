@@ -19,40 +19,78 @@ import {
 import Navbar from "../components/Navbar";
 import api from "../api/axios";
 
-
 // ========================================
 // HELPERS
 // ========================================
 
 const formatCurrency = (value) => {
-    if (
-        value === null ||
-        value === undefined ||
-        Number.isNaN(Number(value))
-    ) {
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
         return "₹0";
     }
 
-    return `₹${Number(value).toLocaleString("en-IN", {
+    return `₹${number.toLocaleString("en-IN", {
         maximumFractionDigits: 2,
     })}`;
 };
 
-
 const formatPercent = (value) => {
-    if (
-        value === null ||
-        value === undefined ||
-        Number.isNaN(Number(value))
-    ) {
+    const number = Number(value);
+
+    if (!Number.isFinite(number)) {
         return "N/A";
     }
-
-    const number = Number(value);
 
     return `${number >= 0 ? "+" : ""}${number.toFixed(2)}%`;
 };
 
+// Safely get a financial metric
+const getMetric = (source, key) => {
+    if (!source) {
+        return {
+            current: 0,
+            previous: 0,
+            changePercent: null,
+        };
+    }
+
+    // New structure:
+    // { current, previous, changePercent }
+
+    if (
+        typeof source === "object" &&
+        (
+            source.current !== undefined ||
+            source.previous !== undefined ||
+            source.changePercent !== undefined
+        )
+    ) {
+        return {
+            current: Number(source.current ?? 0),
+            previous: Number(source.previous ?? 0),
+            changePercent:
+                source.changePercent !== undefined
+                    ? Number(source.changePercent)
+                    : null,
+        };
+    }
+
+    // Legacy structure support
+    if (key && source[key] !== undefined) {
+        return {
+            current: Number(source[key] ?? 0),
+            previous: 0,
+            changePercent: null,
+        };
+    }
+
+    return {
+        current: 0,
+        previous: 0,
+        changePercent: null,
+    };
+};
 
 // ========================================
 // MAIN COMPONENT
@@ -62,7 +100,6 @@ const MorningBrief = () => {
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
-
 
     // ========================================
     // FETCH MORNING BRIEF
@@ -85,14 +122,13 @@ const MorningBrief = () => {
                 "/api/morning-brief",
                 {
                     headers: {
-                        Authorization:
-                            `Bearer ${token}`,
+                        Authorization: `Bearer ${token}`,
                     },
                 }
             );
 
             console.log(
-                "Morning Brief API Response:",
+                "🔥 Morning Brief API Response:",
                 response.data
             );
 
@@ -107,7 +143,6 @@ const MorningBrief = () => {
             }
 
             setData(response.data);
-
         } catch (err) {
             console.error(
                 "Morning Brief Error:",
@@ -124,39 +159,161 @@ const MorningBrief = () => {
         }
     };
 
-
     useEffect(() => {
         fetchMorningBrief();
     }, []);
 
+    // ========================================
+    // BACKEND DATA
+    // ========================================
+
+    /*
+        Preferred backend structure:
+
+        {
+            businessSnapshot: {
+                revenue: {
+                    current,
+                    previous,
+                    changePercent
+                },
+                expenses: {
+                    current,
+                    previous,
+                    changePercent
+                },
+                grossProfit: {
+                    current,
+                    previous,
+                    changePercent
+                },
+                netProfit: {
+                    current,
+                    previous,
+                    changePercent
+                }
+            },
+
+            intelligence: {
+                financials: {
+                    revenue,
+                    expenses,
+                    grossProfit,
+                    profit
+                }
+            },
+
+            morningBrief: {
+                summary,
+                whatHappened,
+                whatNeedsAttention,
+                todayFocus
+            }
+        }
+    */
+
+    const businessSnapshot =
+        data?.businessSnapshot || {};
+
+    const intelligenceFinancials =
+        data?.intelligence?.financials || {};
 
     // ========================================
-    // EXTRACT DATA SAFELY
+    // FINANCIAL SNAPSHOT
     // ========================================
 
-    const briefData =
-        data?.briefData ||
-        data?.morningBriefData ||
-        {};
+    const revenue = getMetric(
+        businessSnapshot.revenue ||
+            intelligenceFinancials.revenue,
+        "current"
+    );
 
-    const revenue =
-        briefData.revenue || {};
+    const expenses = getMetric(
+        businessSnapshot.expenses ||
+            intelligenceFinancials.expenses,
+        "current"
+    );
 
-    const expenses =
-        briefData.expenses || {};
+    const grossProfit = getMetric(
+        businessSnapshot.grossProfit ||
+            intelligenceFinancials.grossProfit,
+        "current"
+    );
 
-    const profit =
-        briefData.profit || {};
+    const netProfit = getMetric(
+        businessSnapshot.netProfit ||
+            intelligenceFinancials.profit,
+        "current"
+    );
+
+    // ========================================
+    // DEBUG LOGS
+    // ========================================
+
+    console.log(
+        "📊 Morning Brief Snapshot:",
+        {
+            revenue,
+            expenses,
+            grossProfit,
+            netProfit,
+        }
+    );
+
+    // ========================================
+    // SIGNALS
+    // ========================================
 
     const signals =
-        briefData.signals || [];
+        data?.intelligence?.signals ||
+        data?.signals ||
+        data?.briefData?.signals ||
+        [];
 
-    const aiBrief =
+    // ========================================
+    // STRUCTURED VYPARMIND RESPONSE
+    // ========================================
+
+    const morningBrief =
+        data?.morningBrief ||
         data?.vyparMind?.morningBrief ||
         data?.vyparMind?.brief ||
-        data?.morningBrief ||
-        "";
+        data?.brief ||
+        null;
 
+    const isStructuredBrief =
+        morningBrief &&
+        typeof morningBrief === "object";
+
+    const summary =
+        isStructuredBrief
+            ? morningBrief.summary
+            : morningBrief;
+
+    const whatHappened =
+        isStructuredBrief
+            ? morningBrief.whatHappened
+            : "";
+
+    const whatNeedsAttention =
+        isStructuredBrief
+            ? morningBrief.whatNeedsAttention
+            : "";
+
+    const todayFocus =
+        isStructuredBrief
+            ? morningBrief.todayFocus
+            : "";
+
+    const aiAvailable =
+        isStructuredBrief
+            ? morningBrief.aiAvailable
+            : true;
+
+    const rateLimited =
+        isStructuredBrief
+            ? morningBrief.rateLimited
+            : false;
 
     // ========================================
     // LOADING
@@ -197,7 +354,6 @@ const MorningBrief = () => {
         );
     }
 
-
     // ========================================
     // ERROR
     // ========================================
@@ -230,7 +386,6 @@ const MorningBrief = () => {
                             className="mt-6 inline-flex items-center gap-2 rounded-xl bg-emerald-500 px-5 py-3 font-medium text-black transition hover:bg-emerald-400"
                         >
                             <RefreshCw size={17} />
-
                             Try Again
                         </button>
 
@@ -241,7 +396,6 @@ const MorningBrief = () => {
             </div>
         );
     }
-
 
     // ========================================
     // UI
@@ -279,11 +433,9 @@ const MorningBrief = () => {
 
                         </div>
 
-
                         <h1 className="text-3xl font-bold tracking-tight md:text-4xl">
                             Morning Brief
                         </h1>
-
 
                         <p className="mt-2 max-w-2xl text-gray-400">
                             A quick view of what happened, what needs
@@ -292,18 +444,54 @@ const MorningBrief = () => {
 
                     </div>
 
-
                     <button
                         onClick={fetchMorningBrief}
                         className="flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-sm text-gray-300 transition hover:bg-white/[0.06]"
                     >
                         <RefreshCw size={16} />
-
                         Refresh Brief
                     </button>
 
                 </div>
 
+                {/* ========================================
+                    AI STATUS
+                ======================================== */}
+
+                {isStructuredBrief && (
+                    <div className="mb-6 flex flex-wrap items-center gap-3">
+
+                        <div
+                            className={`inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs ${
+                                aiAvailable
+                                    ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
+                                    : "border-yellow-500/20 bg-yellow-500/10 text-yellow-400"
+                            }`}
+                        >
+
+                            <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                    aiAvailable
+                                        ? "bg-emerald-400"
+                                        : "bg-yellow-400"
+                                }`}
+                            />
+
+                            {aiAvailable
+                                ? "AI Intelligence Active"
+                                : "Database Intelligence Mode"}
+
+                        </div>
+
+                        {rateLimited && (
+                            <span className="text-xs text-gray-500">
+                                Groq AI temporarily unavailable. Showing
+                                verified business data instead.
+                            </span>
+                        )}
+
+                    </div>
+                )}
 
                 {/* ========================================
                     AI SUMMARY
@@ -338,14 +526,13 @@ const MorningBrief = () => {
 
                         </div>
 
-
-                        {aiBrief ? (
+                        {summary ? (
                             <div className="whitespace-pre-line text-sm leading-7 text-gray-300 md:text-base">
-                                {aiBrief}
+                                {summary}
                             </div>
                         ) : (
                             <p className="text-sm text-gray-500">
-                                No AI summary was returned by the
+                                No summary was returned by the
                                 Morning Brief service.
                             </p>
                         )}
@@ -354,9 +541,51 @@ const MorningBrief = () => {
 
                 </section>
 
+                {/* ========================================
+                    WHAT HAPPENED
+                ======================================== */}
+
+                {whatHappened && (
+                    <section className="mb-8">
+
+                        <div className="mb-4 flex items-center gap-3">
+
+                            <div className="rounded-xl bg-blue-500/10 p-3">
+
+                                <TrendingDown
+                                    size={20}
+                                    className="text-blue-400"
+                                />
+
+                            </div>
+
+                            <div>
+
+                                <h2 className="text-xl font-semibold">
+                                    What Happened
+                                </h2>
+
+                                <p className="text-sm text-gray-500">
+                                    Recent business changes detected by VyparMind.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                        <div className="rounded-2xl border border-white/10 bg-[#0B1712] p-6">
+
+                            <p className="whitespace-pre-line text-sm leading-7 text-gray-300">
+                                {whatHappened}
+                            </p>
+
+                        </div>
+
+                    </section>
+                )}
 
                 {/* ========================================
-                    KEY METRICS
+                    BUSINESS SNAPSHOT
                 ======================================== */}
 
                 <section className="mb-8">
@@ -373,8 +602,9 @@ const MorningBrief = () => {
 
                     </div>
 
-
                     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+
+                        {/* REVENUE */}
 
                         <SnapshotCard
                             title="Revenue"
@@ -387,6 +617,7 @@ const MorningBrief = () => {
                             icon={Wallet}
                         />
 
+                        {/* EXPENSES */}
 
                         <SnapshotCard
                             title="Expenses"
@@ -400,28 +631,39 @@ const MorningBrief = () => {
                             negativeChange
                         />
 
+                        {/* GROSS PROFIT */}
 
                         <SnapshotCard
                             title="Gross Profit"
                             value={formatCurrency(
-                                profit.grossProfit
+                                grossProfit.current
                             )}
+                            change={
+                                grossProfit.changePercent
+                            }
                             icon={TrendingUp}
+                            negative={
+                                grossProfit.current < 0
+                            }
                         />
 
+                        {/* NET PROFIT */}
 
                         <SnapshotCard
                             title="Net Profit"
                             value={formatCurrency(
-                                profit.netProfit
+                                netProfit.current
                             )}
-                            icon={profit.netProfit < 0
-                                ? TrendingDown
-                                : TrendingUp}
+                            change={
+                                netProfit.changePercent
+                            }
+                            icon={
+                                netProfit.current < 0
+                                    ? TrendingDown
+                                    : TrendingUp
+                            }
                             negative={
-                                Number(
-                                    profit.netProfit || 0
-                                ) < 0
+                                netProfit.current < 0
                             }
                         />
 
@@ -429,9 +671,51 @@ const MorningBrief = () => {
 
                 </section>
 
+                {/* ========================================
+                    WHAT NEEDS ATTENTION - AI
+                ======================================== */}
+
+                {whatNeedsAttention && (
+                    <section className="mb-8">
+
+                        <div className="mb-4 flex items-center gap-3">
+
+                            <div className="rounded-xl bg-red-500/10 p-3">
+
+                                <ShieldAlert
+                                    size={20}
+                                    className="text-red-400"
+                                />
+
+                            </div>
+
+                            <div>
+
+                                <h2 className="text-xl font-semibold">
+                                    VyparMind Analysis
+                                </h2>
+
+                                <p className="text-sm text-gray-500">
+                                    Issues identified from your business data.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                        <div className="rounded-2xl border border-red-500/10 bg-red-500/[0.04] p-6">
+
+                            <p className="whitespace-pre-line text-sm leading-7 text-gray-300">
+                                {whatNeedsAttention}
+                            </p>
+
+                        </div>
+
+                    </section>
+                )}
 
                 {/* ========================================
-                    TODAY'S ATTENTION
+                    SIGNALS
                 ======================================== */}
 
                 <section className="mb-8">
@@ -460,7 +744,6 @@ const MorningBrief = () => {
                         </div>
 
                     </div>
-
 
                     {signals.length === 0 ? (
 
@@ -511,6 +794,48 @@ const MorningBrief = () => {
 
                 </section>
 
+                {/* ========================================
+                    TODAY'S FOCUS
+                ======================================== */}
+
+                {todayFocus && (
+                    <section className="mb-8">
+
+                        <div className="mb-4 flex items-center gap-3">
+
+                            <div className="rounded-xl bg-blue-500/10 p-3">
+
+                                <Lightbulb
+                                    size={20}
+                                    className="text-blue-400"
+                                />
+
+                            </div>
+
+                            <div>
+
+                                <h2 className="text-xl font-semibold">
+                                    Today's Focus
+                                </h2>
+
+                                <p className="text-sm text-gray-500">
+                                    Areas worth reviewing today.
+                                </p>
+
+                            </div>
+
+                        </div>
+
+                        <div className="rounded-2xl border border-blue-500/10 bg-blue-500/[0.04] p-6">
+
+                            <p className="whitespace-pre-line text-sm leading-7 text-gray-300">
+                                {todayFocus}
+                            </p>
+
+                        </div>
+
+                    </section>
+                )}
 
                 {/* ========================================
                     QUICK ACTIONS
@@ -532,7 +857,7 @@ const MorningBrief = () => {
                         <div>
 
                             <h2 className="text-xl font-semibold">
-                                Today's Focus
+                                Review Areas
                             </h2>
 
                             <p className="text-sm text-gray-500">
@@ -542,7 +867,6 @@ const MorningBrief = () => {
                         </div>
 
                     </div>
-
 
                     <div className="grid gap-4 md:grid-cols-3">
 
@@ -567,7 +891,6 @@ const MorningBrief = () => {
                     </div>
 
                 </section>
-
 
                 {/* ========================================
                     FOOTER
@@ -594,7 +917,6 @@ const MorningBrief = () => {
     );
 };
 
-
 // ========================================
 // SNAPSHOT CARD
 // ========================================
@@ -607,7 +929,6 @@ const SnapshotCard = ({
     negative = false,
     negativeChange = false,
 }) => {
-
     return (
         <div className="rounded-2xl border border-white/10 bg-[#0B1712] p-5">
 
@@ -631,7 +952,6 @@ const SnapshotCard = ({
 
                 </div>
 
-
                 <div className="rounded-xl bg-white/[0.04] p-3">
 
                     <Icon
@@ -647,9 +967,9 @@ const SnapshotCard = ({
 
             </div>
 
-
             {change !== undefined &&
-                change !== null && (
+                change !== null &&
+                Number.isFinite(Number(change)) && (
 
                     <div className="mt-4 flex items-center gap-2 text-xs">
 
@@ -673,7 +993,6 @@ const SnapshotCard = ({
                             />
                         )}
 
-
                         <span
                             className={
                                 (
@@ -688,36 +1007,33 @@ const SnapshotCard = ({
                             {formatPercent(change)}
                         </span>
 
-
                         <span className="text-gray-600">
                             vs previous period
                         </span>
 
                     </div>
-
                 )}
 
         </div>
     );
 };
 
-
 // ========================================
 // SIGNAL CARD
 // ========================================
 
 const SignalCard = ({ signal }) => {
-
     const type =
         signal?.type || "";
 
-
     const Icon =
-        type === "DECLINING_REVENUE"
+        type === "DECLINING_REVENUE" ||
+        type === "DECLINING_SALES"
             ? TrendingDown
             : type === "RISING_EXPENSES"
             ? ArrowUpRight
-            : type === "NEGATIVE_NET_PROFIT"
+            : type === "NEGATIVE_NET_PROFIT" ||
+              type === "NEGATIVE_PROFIT"
             ? AlertTriangle
             : type === "LOW_STOCK"
             ? Zap
@@ -725,13 +1041,14 @@ const SignalCard = ({ signal }) => {
             ? AlertTriangle
             : ShieldAlert;
 
-
     const title =
-        type === "DECLINING_REVENUE"
+        type === "DECLINING_REVENUE" ||
+        type === "DECLINING_SALES"
             ? "Declining Revenue"
             : type === "RISING_EXPENSES"
             ? "Rising Expenses"
-            : type === "NEGATIVE_NET_PROFIT"
+            : type === "NEGATIVE_NET_PROFIT" ||
+              type === "NEGATIVE_PROFIT"
             ? "Negative Net Profit"
             : type === "LOW_STOCK"
             ? "Low Stock"
@@ -739,10 +1056,8 @@ const SignalCard = ({ signal }) => {
             ? "Out of Stock"
             : "Business Signal";
 
-
     const severity =
         signal?.severity || "MEDIUM";
-
 
     const severityClass =
         severity === "HIGH"
@@ -750,7 +1065,6 @@ const SignalCard = ({ signal }) => {
             : severity === "LOW"
             ? "bg-blue-500/10 text-blue-400 border-blue-500/20"
             : "bg-yellow-500/10 text-yellow-400 border-yellow-500/20";
-
 
     return (
         <div className="rounded-2xl border border-white/10 bg-[#0B1712] p-5">
@@ -768,7 +1082,6 @@ const SignalCard = ({ signal }) => {
 
                     </div>
 
-
                     <div>
 
                         <h3 className="font-semibold">
@@ -777,13 +1090,13 @@ const SignalCard = ({ signal }) => {
 
                         <p className="mt-1 text-sm text-gray-500">
                             {signal?.recommendation ||
+                                signal?.message ||
                                 "Review this signal."}
                         </p>
 
                     </div>
 
                 </div>
-
 
                 <span
                     className={`rounded-full border px-3 py-1 text-xs font-semibold ${severityClass}`}
@@ -792,7 +1105,6 @@ const SignalCard = ({ signal }) => {
                 </span>
 
             </div>
-
 
             {signal?.value !== undefined && (
 
@@ -803,26 +1115,30 @@ const SignalCard = ({ signal }) => {
                     </span>
 
                     <p className="mt-1 font-semibold">
+
                         {typeof signal.value === "number"
                             ? type.includes("REVENUE") ||
+                              type.includes("SALES") ||
                               type.includes("EXPENSE")
                                 ? formatPercent(
                                       signal.value
                                   )
+                                : type === "LOW_STOCK" ||
+                                  type === "OUT_OF_STOCK"
+                                ? signal.value
                                 : formatCurrency(
                                       signal.value
                                   )
                             : signal.value}
+
                     </p>
 
                 </div>
-
             )}
 
         </div>
     );
 };
-
 
 // ========================================
 // FOCUS CARD
@@ -833,7 +1149,6 @@ const FocusCard = ({
     title,
     description,
 }) => {
-
     return (
         <div className="rounded-2xl border border-white/10 bg-[#0B1712] p-5 transition hover:border-emerald-500/20">
 
@@ -846,11 +1161,9 @@ const FocusCard = ({
 
             </div>
 
-
             <h3 className="font-semibold">
                 {title}
             </h3>
-
 
             <p className="mt-2 text-sm leading-6 text-gray-500">
                 {description}
@@ -859,6 +1172,5 @@ const FocusCard = ({
         </div>
     );
 };
-
 
 export default MorningBrief;
