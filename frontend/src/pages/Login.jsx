@@ -87,7 +87,7 @@ const Login = () => {
 
                 // Business already exists
                 if (businessResponse.status === 200) {
-                    navigate("/dashboard", {
+                    navigate("/business-setup", {
                         replace: true,
                     });
 
