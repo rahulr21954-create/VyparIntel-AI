@@ -16,18 +16,28 @@ const MODEL =
 const formatMoney = (value, currency = "INR") => {
     const amount = Number(value || 0);
 
-    if (currency === "INR") {
-        return `₹${amount.toLocaleString("en-IN", {
+    if (!Number.isFinite(amount)) {
+        return currency === "INR" ? "₹0" : `${currency} 0`;
+    }
+
+    try {
+        return new Intl.NumberFormat("en-IN", {
+            style: "currency",
+            currency,
+            maximumFractionDigits: 2,
+        }).format(amount);
+    } catch (error) {
+        // Safe fallback for unsupported currency codes
+        if (currency === "INR") {
+            return `₹${amount.toLocaleString("en-IN", {
+                maximumFractionDigits: 2,
+            })}`;
+        }
+
+        return `${currency} ${amount.toLocaleString("en-IN", {
             maximumFractionDigits: 2,
         })}`;
     }
-
-    return `${currency} ${amount.toLocaleString(
-        "en-IN",
-        {
-            maximumFractionDigits: 2,
-        }
-    )}`;
 };
 
 
@@ -62,10 +72,17 @@ const getFinancials = (businessData) => {
 
 
 const getCurrency = (businessData) => {
-    return (
-        businessData?.business?.currency ||
-        "INR"
-    );
+    const currency =
+        businessData?.business?.currency;
+
+    if (
+        typeof currency === "string" &&
+        currency.trim()
+    ) {
+        return currency.trim().toUpperCase();
+    }
+
+    return "INR";
 };
 
 
@@ -250,6 +267,7 @@ const buildSummary = (
             currency
         )} in revenue during the current period. `;
 
+
     summary +=
         `Gross profit is ${formatMoney(
             grossProfit,
@@ -259,11 +277,13 @@ const buildSummary = (
             currency
         )}. `;
 
+
     summary +=
         `Net profit is ${formatMoney(
             netProfit,
             currency
         )} and the current business status is ${status}. `;
+
 
     summary +=
         `${sales} sale(s) and ${products} product(s) are currently recorded.`;
@@ -274,10 +294,12 @@ const buildSummary = (
             ` ${lowStock} product(s) are at or below minimum stock.`;
     }
 
+
     if (outOfStock > 0) {
         summary +=
             ` ${outOfStock} product(s) are out of stock.`;
     }
+
 
     return summary;
 };
@@ -415,6 +437,9 @@ const buildWhatNeedsAttention = (
 
     const attention = [];
 
+    const currency =
+        getCurrency(businessData);
+
 
     if (
         snapshot.netProfit.current < 0
@@ -422,7 +447,7 @@ const buildWhatNeedsAttention = (
         attention.push(
             `Net profit is negative at ${formatMoney(
                 snapshot.netProfit.current,
-                getCurrency(businessData)
+                currency
             )}.`
         );
     }
@@ -621,13 +646,55 @@ const generateAIBrief = async (
             businessData
         );
 
+    const currency =
+        getCurrency(businessData);
+
+    const businessName =
+        getBusinessName(businessData);
+
+
     const prompt = `
 You are VyparMind, the business intelligence AI
 inside VyparIntel.
 
+Your job is to analyze the supplied business data
+and explain what is happening in the business.
+
 Analyze ONLY the supplied business data.
 
-BUSINESS DATA:
+==================================================
+BUSINESS INFORMATION
+==================================================
+
+Business Name:
+${businessName}
+
+Business Currency:
+${currency}
+
+==================================================
+CURRENCY RULES
+==================================================
+
+- The business currency is ${currency}.
+- If the currency is INR, ALWAYS use the ₹ symbol.
+- For INR, use Indian number formatting.
+- Examples:
+  ₹9,815
+  ₹25,000
+  ₹1,25,000
+  ₹12,50,000
+- NEVER use "$" when the currency is INR.
+- NEVER convert INR into USD or another currency.
+- NEVER invent exchange rates.
+- NEVER change the actual numeric values supplied.
+- Monetary values must remain in the business currency.
+- Percentage values should use the % symbol.
+- Do not add unnecessary decimal places to money.
+
+==================================================
+BUSINESS DATA
+==================================================
 
 ${JSON.stringify(
     {
@@ -636,6 +703,8 @@ ${JSON.stringify(
 
         period:
             businessData?.period || {},
+
+        currency,
 
         snapshot,
 
@@ -652,6 +721,10 @@ ${JSON.stringify(
     2
 )}
 
+==================================================
+RESPONSE FORMAT
+==================================================
+
 Return ONLY valid JSON.
 
 Required format:
@@ -663,17 +736,29 @@ Required format:
   "todayFocus": "practical areas to review"
 }
 
-Rules:
+==================================================
+RULES
+==================================================
 
 - Use only supplied data.
 - Never invent numbers.
 - Never invent products.
+- Never invent customers.
+- Never invent transactions.
 - Never invent reasons that are not supported by data.
+- Never assume a trend that is not present in the data.
 - Do not guarantee future results.
 - Keep language simple.
 - Be practical for a small business owner.
 - Separate facts from recommendations.
+- Mention monetary values using the correct business currency.
+- If currency is INR, use ₹.
+- If previous-period data is unavailable, clearly say that comparison is unavailable.
+- Do not claim that revenue increased or decreased without supporting data.
+- Do not claim why something happened unless the supplied data supports the explanation.
+- Recommendations should be based on observed business signals.
 - Do not use markdown code fences.
+- Do not return anything outside the JSON object.
 `;
 
 
@@ -685,7 +770,7 @@ Rules:
                 {
                     role: "system",
                     content:
-                        "You are VyparIntel's evidence-based business intelligence assistant.",
+                        "You are VyparIntel's evidence-based business intelligence assistant. You must use the supplied business currency exactly and must never invent financial data.",
                 },
                 {
                     role: "user",
@@ -737,6 +822,8 @@ Rules:
 
         businessSnapshot:
             snapshot,
+
+        currency,
 
         source:
             "GROQ_AI",
@@ -860,7 +947,8 @@ export {
     generateFallbackBrief,
     generateAIBrief,
     buildBusinessSnapshot,
+    formatMoney,
+    getCurrency,
 };
 
 export default generateMorningBrief;
-
